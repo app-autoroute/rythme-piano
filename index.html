@@ -148,7 +148,7 @@
 </head>
 <body>
 
-    <h1>Aide Rythmique (16h42)</h1>
+    <h1>Aide Rythmique (17h18)</h1>
 
     <div class="controls">
         <div class="controls-row">
@@ -232,6 +232,9 @@
         let currentStepInLoop = 0;   
         let stepDuration = 0.0;      
         
+        // Variable pour stocker le verrou de veille de l'écran
+        let wakeLock = null;
+
         const scheduleAheadTime = 0.1; 
         const lookahead = 25.0;        
 
@@ -250,6 +253,24 @@
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const mainGainNode = audioCtx.createGain();
         mainGainNode.connect(audioCtx.destination);
+
+        // Fonctions de gestion de la veille de l'écran (Wake Lock)
+        async function requestWakeLock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                } catch (err) {
+                    console.warn(`Impossible de bloquer la veille : ${err.message}`);
+                }
+            }
+        }
+
+        function releaseWakeLock() {
+            if (wakeLock !== null) {
+                wakeLock.release();
+                wakeLock = null;
+            }
+        }
 
         function saveSettings() {
             const activeMD = Array.from(gridMD.children).map(c => c.classList.contains('active'));
@@ -335,15 +356,12 @@
             const mdActive = cellsMD[step] && cellsMD[step].classList.contains('active');
             const mgActive = cellsMG[step] && cellsMG[step].classList.contains('active');
 
-            // Si les deux mains jouent ensemble, on équilibre légèrement le volume pour éviter la saturation
             const targetGain = (mdActive && mgActive) ? 0.22 : 0.3;
 
             if (mdActive) {
-                // Main Droite : Fréquences plus hautes (ex: Ré 5 = 587Hz)
                 triggerCustomSound(soundMDSelect.value, 587.33, currentStepDuration, time, targetGain);
             }
             if (mgActive) {
-                // Main Gauche : Fréquences plus basses (ex: Sol 3 = 196Hz)
                 triggerCustomSound(soundMGSelect.value, 196.00, currentStepDuration, time, targetGain);
             }
         }
@@ -407,6 +425,9 @@
             playBtn.innerText = 'STOP';
             playBtn.style.background = '#ff5722';
 
+            // On demande le blocage de la mise en veille de l'écran
+            requestWakeLock();
+
             currentStepInLoop = 0;
             notesInQueue = [];
             const bpm = parseInt(bpmInput.value);
@@ -425,6 +446,9 @@
             playBtn.innerText = 'PLAY';
             playBtn.style.background = '#00ffcc';
             
+            // On autorise à nouveau l'écran à se mettre en veille
+            releaseWakeLock();
+
             clearTimeout(timerId);
             cancelAnimationFrame(animationFrameId);
             resetPlayhead();
@@ -437,7 +461,6 @@
             let noteDuration = maxDuration * 0.85;
 
             if (instrument === 'piano') {
-                // Synthèse type Piano Électrique doux : Sine + Triangle harmonique léger
                 const osc1 = audioCtx.createOscillator();
                 const osc2 = audioCtx.createOscillator();
                 const subGain = audioCtx.createGain();
@@ -446,12 +469,12 @@
                 osc1.frequency.value = baseFreq;
                 
                 osc2.type = 'triangle';
-                osc2.frequency.value = baseFreq * 2; // Harmonique supérieure
+                osc2.frequency.value = baseFreq * 2;
                 
                 osc1.connect(gainNode);
                 osc2.connect(subGain);
                 subGain.connect(gainNode);
-                subGain.gain.setValueAtTime(0.15, time); // Harmonique en retrait
+                subGain.gain.setValueAtTime(0.15, time);
                 
                 gainNode.gain.setValueAtTime(volumeCoeff, time);
                 gainNode.gain.setValueAtTime(volumeCoeff, time + noteDuration * 0.3);
@@ -463,7 +486,6 @@
                 osc2.stop(time + noteDuration);
 
             } else if (instrument === 'bell') {
-                // Boîte à musique / Clochette : Fréquence doublée, son très pur et cristallin
                 const osc = audioCtx.createOscillator();
                 osc.type = 'sine';
                 osc.frequency.value = baseFreq * 1.5;
@@ -476,7 +498,6 @@
                 osc.stop(time + noteDuration * 1.2);
 
             } else if (instrument === 'clap') {
-                // Clap Percussion mat : Bruit blanc simulé par une onde triangle descendante ultra rapide
                 const osc = audioCtx.createOscillator();
                 osc.type = 'triangle';
                 osc.frequency.setValueAtTime(160, time);
@@ -484,16 +505,15 @@
                 osc.connect(gainNode);
                 
                 gainNode.gain.setValueAtTime(volumeCoeff * 1.4, time);
-                gainNode.gain.exponentialRampToValueAtTime(0.00001, time + 0.05); // Tranchant et très court
+                gainNode.gain.exponentialRampToValueAtTime(0.00001, time + 0.05);
                 
                 osc.start(time);
                 osc.stop(time + 0.06);
 
             } else if (instrument === 'bass') {
-                // Basse sourde et ronde
                 const osc = audioCtx.createOscillator();
                 osc.type = 'triangle';
-                osc.frequency.value = baseFreq * 0.5; // Octave inférieure
+                osc.frequency.value = baseFreq * 0.5;
                 osc.connect(gainNode);
                 
                 gainNode.gain.setValueAtTime(volumeCoeff * 1.1, time);
@@ -545,6 +565,13 @@
             
             buildGrid(settings.gridStateMD, settings.gridStateMG);
         }
+
+        // Si l'utilisateur quitte l'onglet et revient, on réactive le verrou s'il jouait toujours
+        document.addEventListener('visibilitychange', () => {
+            if (wakeLock !== null && document.visibilityState === 'visible' && isPlaying) {
+                requestWakeLock();
+            }
+        });
 
         window.addEventListener('resize', resetPlayhead);
         
