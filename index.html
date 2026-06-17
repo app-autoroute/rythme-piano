@@ -226,7 +226,6 @@
         let timerId = null;
         let animationFrameId = null;
         
-        // Structure de données pour l'historique des notes jouées (permet une synchronisation parfaite de l'affichage)
         let notesInQueue = [];
         
         let nextNoteTime = 0.0;     
@@ -306,7 +305,7 @@
         function getTimelineDimensions() {
             const firstCell = gridMD.children[0];
             const lastCell = gridMD.children[gridMD.children.length - 1];
-            if (!firstCell || !lastCell) return { startX: 40, totalWidth: 0, cellWidth: 0 };
+            if (!firstCell || !lastCell) return { startX: 40, totalWidth: 0 };
 
             const containerRect = document.querySelector('.grid-container').getBoundingClientRect();
             const firstRect = firstCell.getBoundingClientRect();
@@ -314,9 +313,8 @@
 
             const startX = firstRect.left - containerRect.left;
             const totalWidth = lastRect.right - firstRect.left;
-            const cellWidth = firstRect.width;
 
-            return { startX, totalWidth, cellWidth };
+            return { startX, totalWidth };
         }
 
         function resetPlayhead() {
@@ -325,7 +323,6 @@
         }
 
         function scheduleNote(step, time) {
-            // Ajouter la note à la file d'attente d'affichage visuel
             notesInQueue.push({ step: step, time: time });
 
             const cellsMD = gridMD.children;
@@ -369,12 +366,8 @@
 
             const currentTime = audioCtx.currentTime;
             
-            // On nettoie les notes obsolètes de la file d'attente tout en conservant la note courante
-            while (notesInQueue.length > 0 && notesInQueue[0].time < currentTime) {
-                // Si c'est la seule note restante ou si la suivante est dans le futur, on s'arrête
-                if (notesInQueue.length === 1 || notesInQueue[1].time > currentTime) {
-                    break;
-                }
+            // Correction ici : On retire une note de la file d'attente UNIQUEMENT si la note suivante a déjà commencé à être jouée en temps réel
+            while (notesInQueue.length > 1 && notesInQueue[1].time <= currentTime) {
                 notesInQueue.shift();
             }
 
@@ -383,16 +376,14 @@
                 const noteStartTime = currentNote.time;
                 const step = currentNote.step;
                 
-                // Calcul précis de la progression à l'intérieur de la case actuelle (entre 0 et 1)
-                const elapsedInStep = currentTime - noteStartTime;
+                // Si la note courante est encore programmée dans le futur (au tout début du démarrage), on force le trait au point 0
+                let elapsedInStep = currentTime - noteStartTime;
+                if (elapsedInStep < 0) elapsedInStep = 0;
+                
                 const progressInStep = Math.min(Math.max(elapsedInStep / stepDuration, 0), 1);
 
                 const dims = getTimelineDimensions();
-                
-                // Position physique exacte du début de la case courante
                 const stepStartX = dims.startX + (step * (dims.totalWidth / totalSteps));
-                
-                // Avancement linéaire strict de la ligne blanche à l'intérieur de cette case
                 const currentX = stepStartX + (progressInStep * (dims.totalWidth / totalSteps));
                 
                 playhead.style.left = `${currentX}px`;
@@ -416,7 +407,8 @@
             const loopDuration = (60.0 / bpm) * 4;
             stepDuration = loopDuration / totalSteps;
             
-            nextNoteTime = audioCtx.currentTime + 0.02;
+            // Délai initial minime pour stabiliser le premier tick audio/visuel
+            nextNoteTime = audioCtx.currentTime + 0.05;
 
             scheduler();
             animationFrameId = requestAnimationFrame(updatePlayheadVisually);
