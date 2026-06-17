@@ -129,6 +129,7 @@
             pointer-events: none;
             left: 40px;
             z-index: 10;
+            transform: translateX(-2px); /* Centre parfaitement la ligne sur le repère */
         }
         .time-labels {
             display: grid;
@@ -309,10 +310,11 @@
             const firstRect = firstCell.getBoundingClientRect();
             const lastRect = lastCell.getBoundingClientRect();
 
-            return { 
-                startX: firstRect.left - containerRect.left, 
-                totalWidth: lastRect.right - firstRect.left 
-            };
+            // Correction ici : On prend tout le bloc du premier au dernier pixel extérieur droit
+            const startX = firstRect.left - containerRect.left;
+            const totalWidth = lastRect.right - firstRect.left;
+
+            return { startX, totalWidth };
         }
 
         function resetPlayhead() {
@@ -413,14 +415,11 @@
             osc.type = type;
             osc.frequency.value = freq;
             
-            // NoteDuration : on laisse un infime silence (15% de la note) avant la suivante pour éviter le chevauchement
             const noteDuration = maxDuration * 0.85; 
             
-            // Attaque ultra-courte (5ms) pour éviter le clic et le "trou" sur la première note
             gain.gain.setValueAtTime(0.0, time);
             gain.gain.linearRampToValueAtTime(0.3, time + 0.005);
             
-            // Maintien puis extinction propre
             gain.gain.setValueAtTime(0.3, time + noteDuration - 0.01);
             gain.gain.linearRampToValueAtTime(0.00001, time + noteDuration);
             
