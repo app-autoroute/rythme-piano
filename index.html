@@ -21,28 +21,46 @@
         h1 { font-size: 1.4rem; margin-bottom: 10px; color: #00ffcc; }
         .controls {
             display: flex;
+            flex-wrap: wrap;
             gap: 15px;
             align-items: center;
+            justify-content: center;
             margin-bottom: 20px;
             background: #2a2a2a;
-            padding: 10px 20px;
+            padding: 12px 20px;
             border-radius: 8px;
+            max-width: 600px;
         }
-        label { font-weight: bold; }
-        input[type="number"] {
-            width: 60px;
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        label { font-weight: bold; font-size: 0.9rem; color: #bbb; }
+        input[type="number"], select {
             background: #333;
             color: #fff;
             border: 1px solid #555;
-            padding: 5px;
+            padding: 6px;
             border-radius: 4px;
             text-align: center;
+            font-size: 0.9rem;
+        }
+        input[type="range"] {
+            width: 90px;
+            accent-color: #00ffcc;
+            cursor: pointer;
+        }
+        .volume-val {
+            font-size: 0.8rem;
+            color: #00ffcc;
+            min-width: 28px;
         }
         button {
             background: #00ffcc;
             color: #1a1a1a;
             border: none;
-            padding: 8px 16px;
+            padding: 8px 20px;
             font-weight: bold;
             border-radius: 4px;
             cursor: pointer;
@@ -117,8 +135,37 @@
     <h1>Aide Rythmique</h1>
 
     <div class="controls">
-        <label for="bpm">BPM :</label>
-        <input type="number" id="bpm" value="60" min="40" max="240">
+        <div class="control-group">
+            <label for="bpm">BPM :</label>
+            <input type="number" id="bpm" value="60" min="40" max="240">
+        </div>
+        
+        <div class="control-group">
+            <label for="soundMD">Son MD :</label>
+            <select id="soundMD">
+                <option value="sine" selected>Bip Pur (Aigu)</option>
+                <option value="triangle">Claquement doux</option>
+                <option value="square">Arcade / Rétro</option>
+                <option value="sawtooth">Dents de scie</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="soundMG">Son MG :</label>
+            <select id="soundMG">
+                <option value="sine">Bip Pur (Grave)</option>
+                <option value="triangle" selected>Claquement (Percu)</option>
+                <option value="square">Arcade / Rétro</option>
+                <option value="sawtooth">Dents de scie</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="volume">Vol :</label>
+            <input type="range" id="volume" min="0" max="100" value="50">
+            <span class="volume-val" id="volumeVal">50%</span>
+        </div>
+
         <button id="playBtn">PLAY</button>
     </div>
 
@@ -129,14 +176,12 @@
         
         <div id="playhead"></div>
 
-        <!-- Main Droite -->
         <div class="row row-md">
             <div class="row-label">MD</div>
             <div class="grid" id="gridMD"></div>
         </div>
 
-        <!-- Main Gauche -->
-        <div class="row row-mg">
+        <div class="row row-label-mg">
             <div class="row-label">MG</div>
             <div class="grid" id="gridMG"></div>
         </div>
@@ -146,29 +191,53 @@
         const totalSteps = 8;
         let isPlaying = false;
         
-        // Variables d'animation et de temps
         let animationFrameId = null;
         let startTime = 0;
-        let durationPerLoop = 0; // Durée totale d'une boucle de 8 cases en ms
+        let durationPerLoop = 0;
         let lastTriggeredStep = -1;
         
         const playBtn = document.getElementById('playBtn');
         const bpmInput = document.getElementById('bpm');
+        const soundMDSelect = document.getElementById('soundMD');
+        const soundMGSelect = document.getElementById('soundMG');
+        const volumeInput = document.getElementById('volume');
+        const volumeVal = document.getElementById('volumeVal');
         const playhead = document.getElementById('playhead');
         const gridMD = document.getElementById('gridMD');
         const gridMG = document.getElementById('gridMG');
 
-        // Initialisation de l'Audio Context pour des sons propres
+        // Initialisation de l'Audio Context
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Création d'un nœud de volume général propre à l'application
+        const mainGainNode = audioCtx.createGain();
+        mainGainNode.connect(audioCtx.destination);
+        // Réglage initial basé sur la valeur du curseur (ex: 50% -> 0.5)
+        mainGainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
 
-        function createBeep(freq, duration) {
+        // Écouteur pour mettre à jour le volume de l'appli en temps réel
+        volumeInput.addEventListener('input', (e) => {
+            const val = e.target.value;
+            volumeVal.innerText = val + '%';
+            // Conversion de l'échelle 0-100 vers 0.0-1.0 pour le gain audio
+            mainGainNode.gain.setValueAtTime(val / 100, audioCtx.currentTime);
+        });
+
+        function createBeep(freq, type, duration) {
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
+            
+            // On connecte l'oscillateur au gain de la note, puis au gain général de l'appli
             osc.connect(gain);
-            gain.connect(audioCtx.destination);
+            gain.connect(mainGainNode);
+            
+            osc.type = type;
             osc.frequency.value = freq;
-            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            
+            // Volume de base propre à chaque impulsion
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+            
             osc.start();
             osc.stop(audioCtx.currentTime + duration);
         }
@@ -186,52 +255,43 @@
             gridMG.appendChild(cellMG);
         }
 
-        // Calcule les dimensions physiques réelles de la grille pour le trait
         function getTimelineDimensions() {
             const gridRect = gridMD.getBoundingClientRect();
             const containerRect = document.querySelector('.grid-container').getBoundingClientRect();
-            
-            // Le point de départ (gauche de la première case) et la largeur totale de la grille de cases
             const startX = gridRect.left - containerRect.left;
             const totalWidth = gridRect.width;
-            
             return { startX, totalWidth };
         }
 
-        // Boucle d'animation principale (tourne à 60 ou 120 images par seconde selon le téléphone)
         function updateTimeline(timestamp) {
             if (!startTime) startTime = timestamp;
             
-            // Temps écoulé dans la boucle actuelle (en millisecondes)
             const elapsed = (timestamp - startTime) % durationPerLoop;
-            
-            // Progression globale de 0 à 1 dans la mesure
             const progress = elapsed / durationPerLoop;
             
-            // Calcul de la position physique du trait
             const dims = getTimelineDimensions();
             const currentX = dims.startX + (progress * dims.totalWidth);
             playhead.style.left = `${currentX}px`;
             
-            // Déterminer sur quelle case virtuelle se trouve le curseur (0 à 7)
             const currentStep = Math.floor(progress * totalSteps);
             
-            // Si on change de case, on regarde s'il faut déclencher un son
             if (currentStep !== lastTriggeredStep) {
                 const cellsMD = gridMD.children;
                 const cellsMG = gridMG.children;
 
+                const typeMD = soundMDSelect.value;
+                const typeMG = soundMGSelect.value;
+
                 if (cellsMD[currentStep].classList.contains('active')) {
-                    createBeep(880, 0.08); // Bip aigu MD
+                    createBeep(880, typeMD, 0.1); 
                 }
                 if (cellsMG[currentStep].classList.contains('active')) {
-                    createBeep(440, 0.08); // Bip grave MG
+                    createBeep(330, typeMG, 0.12); 
                 }
                 
                 lastTriggeredStep = currentStep;
             }
             
-            // Relancer l'image suivante
             if (isPlaying) {
                 animationFrameId = requestAnimationFrame(updateTimeline);
             }
@@ -243,8 +303,6 @@
             }
 
             const bpm = parseInt(bpmInput.value);
-            // 4 temps par mesure, chaque temps = 60 / bpm secondes. 
-            // Donc la durée totale d'une boucle de 4 temps (8 cases) en ms est :
             durationPerLoop = (60 / bpm) * 4 * 1000; 
             
             startTime = 0;
@@ -262,7 +320,6 @@
             playBtn.style.background = '#00ffcc';
             cancelAnimationFrame(animationFrameId);
             
-            // Repositionner proprement au début
             const dims = getTimelineDimensions();
             playhead.style.left = `${dims.startX}px`;
         }
@@ -272,7 +329,6 @@
             else start();
         });
 
-        // Repositionner le curseur correctement si on tourne le téléphone
         window.addEventListener('resize', () => {
             if (!isPlaying) {
                 const dims = getTimelineDimensions();
@@ -280,7 +336,6 @@
             }
         });
 
-        // Premier positionnement au chargement
         setTimeout(() => {
             const dims = getTimelineDimensions();
             playhead.style.left = `${dims.startX}px`;
