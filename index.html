@@ -148,7 +148,7 @@
 </head>
 <body>
 
-    <h1>Aide Rythmique (15h25)</h1>
+    <h1>Aide Rythmique (15h31)</h1>
 
     <div class="controls">
         <div class="controls-row">
@@ -231,7 +231,6 @@
         let nextNoteTime = 0.0;     
         let currentStepInLoop = 0;   
         let stepDuration = 0.0;      
-        let loopStartTime = 0.0; // Enregistre le début absolu de la boucle courante
         
         const scheduleAheadTime = 0.1; 
         const lookahead = 25.0;        
@@ -351,7 +350,6 @@
             currentStepInLoop++;
             if (currentStepInLoop === totalSteps) {
                 currentStepInLoop = 0;
-                loopStartTime += loopDuration; // On décale le début théorique de la boucle suivante
             }
         }
 
@@ -367,10 +365,7 @@
             if (!isPlaying) return;
 
             const currentTime = audioCtx.currentTime;
-            const bpm = parseInt(bpmInput.value);
-            const loopDuration = (60.0 / bpm) * 4;
 
-            // Nettoyage agressif de la file d'attente pour coller au temps réel
             while (notesInQueue.length > 1 && notesInQueue[1].time <= currentTime) {
                 notesInQueue.shift();
             }
@@ -378,17 +373,14 @@
             if (notesInQueue.length > 0) {
                 const currentNote = notesInQueue[0];
                 
-                // Si la note est dans le futur, le trait reste calé au début de la case
                 let elapsedInStep = currentTime - currentNote.time;
                 if (elapsedInStep < 0) elapsedInStep = 0;
                 
-                // Calcul du ratio d'avancement dans la case courante
                 const progressInStep = Math.min(Math.max(elapsedInStep / stepDuration, 0), 1);
 
                 const dims = getTimelineDimensions();
                 const stepWidth = dims.totalWidth / totalSteps;
                 
-                // Position millimétrée
                 const stepStartX = dims.startX + (currentNote.step * stepWidth);
                 const currentX = stepStartX + (progressInStep * stepWidth);
                 
@@ -413,10 +405,8 @@
             const loopDuration = (60.0 / bpm) * 4;
             stepDuration = loopDuration / totalSteps;
             
-            // On démarre à +0.05s pour laisser le thread audio s'initialiser proprement sans coupure
             const startDelay = 0.05;
             nextNoteTime = audioCtx.currentTime + startDelay;
-            loopStartTime = audioCtx.currentTime + startDelay;
 
             scheduler();
             animationFrameId = requestAnimationFrame(updatePlayheadVisually);
@@ -442,10 +432,8 @@
             
             const noteDuration = maxDuration * 0.85; 
             
-            // Attaque immédiate sans aucune rampe à l'instant mathématique 'time'
             gain.gain.setValueAtTime(0.3, time);
             
-            // Extinction propre en fin de note
             gain.gain.setValueAtTime(0.3, time + noteDuration - 0.005);
             gain.gain.linearRampToValueAtTime(0.00001, time + noteDuration);
             
